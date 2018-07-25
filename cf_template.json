@@ -1,0 +1,429 @@
+{
+    "Description": "v0.1.0: test autoscaling group",
+    "Parameters": {
+      "ProjectTag": {
+        "Type": "String",
+        "Default": "MyAutoscalingOne"
+      },
+      "Environment": {
+        "Type": "String",
+        "Default": "production"
+      },
+      "AppSubnet": {
+        "Description": "Aplication Subnets (comma delimited)",
+        "Default": "subnet-12345678, subnet-abcdefgh",
+        "Type": "CommaDelimitedList"
+      },
+      "AppSubnetCidrBlock": {
+        "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+        "ConstraintDescription": "must be a valid CIDR",
+        "Description": "The CIDR block for App Subnet",
+        "Default": "10.0.1.0/24",
+        "MaxLength": "18",
+        "MinLength": "9",
+        "Type": "String"
+      },
+      "ASGSecurityGroup": {
+        "Default": "sg-12345678",
+        "Description": "AS EC2  Security gropus(comma delimited)",
+        "Type": "CommaDelimitedList"
+      },
+      "ImageId": {
+        "Default": "ami-2a7d75c0",
+        "Description": "Ubuntu 16.04 default from eu-west-1",
+        "Type": "AWS::EC2::Image::Id"
+      },
+      "InstanceType": {
+        "Default": "t2.micro",
+        "Description": "Instance type (m3.medium for prod)",
+        "Type": "String"
+      },
+      "KeyName": {
+        "Default": "default",
+        "Description": "EC2 key name",
+        "Type": "AWS::EC2::KeyPair::KeyName"
+      },
+      "ElbExternalName": {
+        "Default": "MyELBOne",
+        "Description": "ELB name",
+        "Type": "String"
+      },
+      "ElbSecurityGroups": {
+        "Default": "sg-12345678",
+        "Description": "ELB Security gropus(comma delimited)",
+        "Type": "CommaDelimitedList"
+      },
+      "ElbSubnets": {
+        "Default": "subnet-12345678, subnet-abcdefgh",
+        "Description": "ELB Subnets(comma delimited)",
+        "Type": "CommaDelimitedList"
+      },
+      "VpcId": {
+        "Default": "vpc-54387732",
+        "Description": "Existing VPC ID where these resources created.",
+        "Type": "AWS::EC2::VPC::Id"
+      },
+      "ScalingCreateTimeOut": {
+        "Default": "0",
+        "Type": "Number"
+      },
+      "ScalingUpdateTimeOut": {
+        "Default": "0",
+        "Type": "Number"
+      },
+      "ScalingMin": {
+        "Default": "1",
+        "Type": "Number"
+      },
+      "ScalingTermination": {
+        "AllowedValues": [
+          "false",
+          "true"
+        ],
+        "Default": "true",
+        "Type": "String"
+      },
+      "EC2ScaleUpCooldown": {
+        "Default": "600",
+        "Type": "Number"
+      },
+      "EC2ScaleDown": {
+        "Default": "600",
+        "Type": "Number"
+      },
+      "EC2ScaleUpAdjustment": {
+        "Default": "1",
+        "Type": "Number"
+      },
+      "EC2ScaleDownAdjustment": {
+        "Default": "-1",
+        "Type": "Number"
+      },
+      "HealthCheckGracePeriod": {
+        "Default": "300",
+        "Type": "Number"
+      },
+      "HealthCheckType": {
+        "AllowedValues": [
+          "EC2",
+          "ELB"
+        ],
+        "Default": "ELB",
+        "Type": "String"
+      },
+      "ScalingNotificationTopic": {
+        "Type": "String",
+        "Default": "MyASNotificationTopic"
+      },
+      "DesiredCapacity": {
+        "Default": "2",
+        "Type": "Number"
+      },
+      "MinInstancesInService": {
+        "Default": "2",
+        "Type": "Number"
+      },
+      "TerminatedInstances": {
+        "Default": "0",
+        "Type": "Number"
+      },
+      "ScalingMax": {
+        "Default": "5",
+        "Type": "Number"
+      },
+      "NFSLocation": {
+        "Default": "nfs.example.com:/data",
+        "Type": "String"
+      }
+    },
+    "Resources": {
+      "ApplicationLoadBalancer": {
+        "Properties": {
+          "IpAddressType": "ipv4",
+          "Name": {
+            "Ref": "ElbExternalName"
+          },
+          "Scheme": "internet-facing",
+          "SecurityGroups": {
+            "Ref": "ElbSecurityGroups"
+          },
+          "Subnets": {
+            "Ref": "ElbSubnets"
+          },
+          "Type": "application",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": {
+                "Ref": "ElbExternalName"
+              }
+            }
+          ]
+        },
+        "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer"
+      },
+      "NotificationTopic": {
+        "Type" : "AWS::SNS::Topic",
+        "Properties": {
+          "DisplayName": { "Ref": "ScalingNotificationTopic" },
+          "TopicName": { "Ref": "ScalingNotificationTopic" },
+          "Subscription":[
+            {
+              "Endpoint": { "Fn::GetAtt": [ "SQSQueue", "Arn" ] },
+              "Protocol":"sqs"
+            }
+          ]
+        }
+      },
+      "SQSQueue": {
+        "Type": "AWS::SQS::Queue"
+      },
+      "AutoScalingGroup": {
+        "Type": "AWS::AutoScaling::AutoScalingGroup",
+        "Properties": {
+          "DesiredCapacity": {
+            "Ref": "DesiredCapacity"
+          },
+          "HealthCheckType": {
+            "Ref": "HealthCheckType"
+          },
+          "HealthCheckGracePeriod": {
+            "Ref": "HealthCheckGracePeriod"
+          },
+          "LaunchConfigurationName": {
+            "Ref": "LaunchConfiguration"
+          },
+          "MinSize": {
+            "Ref": "ScalingMin"
+          },
+          "MaxSize": {
+            "Ref": "ScalingMax"
+          },
+          "TargetGroupARNs": [
+            {
+              "Ref": "TargetGroup"
+            }
+          ],
+          "VPCZoneIdentifier": {
+            "Ref": "AppSubnet"
+          },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": {
+                "Ref": "AWS::StackName"
+              },
+              "PropagateAtLaunch": "false"
+            }
+          ],
+          "NotificationConfigurations": [
+            {
+              "TopicARN": {
+                "Ref": "NotificationTopic"
+              },
+              "NotificationTypes": [
+                "autoscaling:EC2_INSTANCE_LAUNCH",
+                "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+                "autoscaling:EC2_INSTANCE_TERMINATE",
+                "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+              ]
+            }
+          ]
+        }
+      },
+      "LaunchConfiguration": {
+        "Type": "AWS::AutoScaling::LaunchConfiguration",
+        "Properties": {
+          "ImageId": {
+            "Ref": "ImageId"
+          },
+          "InstanceType": {
+            "Ref": "InstanceType"
+          },
+          "KeyName": {
+            "Ref": "KeyName"
+          },
+          "SecurityGroups": {
+            "Ref": "ASGSecurityGroup"
+          },
+          "UserData": {
+            "Fn::Base64": {
+              "Fn::Join": [
+                "",
+                [
+                  "#!/bin/bash -ex\n",
+                  "apt-get update\n",
+                  "apt-get install -y apache2\n",
+                  "ufw allow 'Apache Full'\n",
+                  "service apache restart\n",
+                  "mkdir /nfs_mountPoint\n",
+                  "mount -F nfs", {"Ref":"NFSLocation"}, "\n",
+                  "\n"
+                ]
+              ]
+            }
+          }
+        }
+      },
+  
+    "TargetGroup": {
+      "Properties": {
+        "Port": "80",
+        "Protocol": "HTTP",
+        "HealthCheckPort": "80",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckPath": "/",
+        "HealthCheckIntervalSeconds": 300,
+        "HealthCheckTimeoutSeconds": 5,
+        "Matcher": {
+          "HttpCode": "200,301,302"
+        },
+        "VpcId": {
+          "Ref": "VpcId"
+        }
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup"
+    },
+    "HttpListener": {
+      "Properties": {
+        "DefaultActions": [
+          {
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            },
+            "Type": "forward"
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "ApplicationLoadBalancer"
+        },
+        "Port": "80",
+        "Protocol": "HTTP"
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::Listener"
+    },
+    "CPUAlarmHigh": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Alarm if CPU too high or metric disappears indicating instance is down",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "1",
+        "Threshold": "75",
+        "AlarmActions": [
+          {
+            "Ref": "ScaleUpPolicy"
+          }
+        ],
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": {
+              "Ref": "AutoScalingGroup"
+            }
+          }
+        ],
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+    "CPUAlarmLow": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Scale-down if CPU has dropped below threshold",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "3",
+        "Threshold": "30",
+        "AlarmActions": [
+          {
+            "Ref": "ScaleDownPolicy"
+          }
+        ],
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": {
+              "Ref": "AutoScalingGroup"
+            }
+          }
+        ],
+        "ComparisonOperator": "LessThanThreshold"
+      }
+    },
+    "ScaleUpPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AdjustmentType": "ChangeInCapacity",
+        "AutoScalingGroupName": {
+          "Ref": "AutoScalingGroup"
+        },
+        "Cooldown": {
+          "Ref": "EC2ScaleUpCooldown"
+        },
+        "ScalingAdjustment": {
+          "Ref": "EC2ScaleUpAdjustment"
+        }
+      }
+    },
+    "ScaleDownPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AdjustmentType": "ChangeInCapacity",
+        "AutoScalingGroupName": {
+          "Ref": "AutoScalingGroup"
+        },
+        "Cooldown": {
+          "Ref": "EC2ScaleDown"
+        },
+        "ScalingAdjustment": {
+          "Ref": "EC2ScaleDownAdjustment"
+        }
+      }
+    }},
+    "Outputs": {
+      "AutoScalingGroup": {
+        "Description": "AutoScaling Group created by this Stack",
+        "Export": {
+          "Name": {
+            "Fn::Join": [
+              ":",
+              [
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "AutoScalingGroup"
+              ]
+            ]
+          }
+        },
+        "Value": {
+          "Ref": "AutoScalingGroup"
+        }
+      },
+      "ApplicationLoadBalancer": {
+        "Description": "ApplicationLoadBalancer created by this Stack",
+        "Export": {
+          "Name": "ApplicationLoadBalancer"
+            
+          
+        },
+        "Value": {
+          "Ref": "ApplicationLoadBalancer"
+        }
+      },
+      "SQSQueue": {
+        "Description": "SQS Queue created by this Stack",
+        "Export": {
+          "Name": {
+            "Fn::Join": [ ":", [ { "Ref": "AWS::StackName" }, "SQSQueue" ] ]
+          }
+        },
+        "Value": { "Ref": "SQSQueue" }
+      }
+    }
+  }
+  
